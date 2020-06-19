@@ -1,6 +1,12 @@
-from setuptools import setup, find_packages
+from setuptools import setup
 
 VERSION = '0.1.0'
+
+REQUIRES = [
+    'boto3',
+    'pyramid',
+    'zope.interface',
+]
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
@@ -16,5 +22,5 @@ setup(
     version='0.1.0',
     py_modules=['pyramid_dynamodb_sessions'],
     python_requires='>=3.6',
-    install_requires=['boto3'],
+    install_requires=REQUIRES,
 )

@@ -1,48 +1,38 @@
+import functools
+import hashlib
+import secrets
+from decimal import Decimal
+from time import time
+
 import boto3
-from pyramid.session import manage_accessed, manage_changed
+from pyramid.interfaces import ISession, ISessionFactory
+from pyramid.session import JSONSerializer
+from zope.interface import implementer
 
 
 class RaceConditionException(Exception):
     pass
 
 
-def proxy_refresh(func):
-    @functool.wraps(func)
-    def wrapped(self, *args, **kwargs):
-        self.accessed = True
-        return func(self.state, *args, **kwargs)
-
-    return wrapped
-
-def proxy_persist(func):
-    @functool.wraps(func)
-    def wrapped(self, *args, **kwargs):
-        self.dirty = True
-        self.accessed = True
-        return func(self.state, *args, **kwargs)
-
-    return wrapped
-
-
+@implementer(ISessionFactory)
 class DynamoDBSessionFactory:
     def __init__(
             self,
-    table,
-    cookie_name='session_id',
-    serializer=None,
-    max_age=None,
-    path='/',
-    domain=None,
-    secure=False,
-    httponly=False,
-    samesite='Lax',
-    timeout=1200,
-    reissue_time=0,
-        consistent_read=True,
-        hash_alg=hashlib.sha256,
-    set_on_exception=True,
+            table,
+            cookie_name='session_id',
+            serializer=None,
+            max_age=None,
+            path='/',
+            domain=None,
+            secure=False,
+            httponly=False,
+            samesite='Lax',
+            timeout=1200,
+            reissue_time=120,
+            hash_alg=hashlib.sha256,
+            set_on_exception=True,
     ):
-    """
+        """
     Configure a :term:`session factory` which will provide DynamoDB-backed
     sessions.  The return value of this function is a :term:`session factory`,
     which may be provided as the ``session_factory`` argument of a
@@ -111,12 +101,28 @@ class DynamoDBSessionFactory:
       while rendering a view. Default: ``True``.
 
     """
-    if isinstance(table, str):
-        dynamodb = boto3.resource('dynamodb')
-        table = dynamodb.Table(table)
+        if isinstance(table, str):
+            dynamodb = boto3.resource('dynamodb')
+            table = dynamodb.Table(table)
+        self.table = table
 
-    if serializer is None:
-        serializer = JSONSerializer()
+        if serializer is None:
+            serializer = JSONSerializer()
+        self.serializer = serializer
+
+        self.cookie_name = cookie_name
+        self.max_age = int(max_age) if max_age is not None else None
+        self.path = path
+        self.domain = domain
+        self.secure = secure
+        self.httponly = httponly
+        self.samesite = samesite
+        self.timeout = int(timeout) if timeout is not None else None
+        self.reissue_time = (
+            int(reissue_time) if reissue_time is not None else None
+        )
+        self.hash_alg = hash_alg
+        self.set_on_exception = set_on_exception
 
     def __call__(self, request):
         session = self._load(request)
@@ -124,23 +130,25 @@ class DynamoDBSessionFactory:
         request.set_response_callback(callback)
         return session
 
+    def _hashed_id(self, session_id):
+        return self.hash_alg(session_id).digest()
+
     def _load(self, request):
-        _session_id = request.cookies.get(self._cookie_name)
-        if not self.session_id:
-            return DynamoDBSession()
-        hashed_id = hash_alg(_session_id).digest()
-        r = table.get_item(
-            Key={'sid': hashed_id},
-            ConsistentRead=self._consistent_read,
+        session_id = request.cookies.get(self._cookie_name)
+        if not session_id:
+            return DynamoDBSession.new_session()
+        r = self.table.get_item(
+            Key={'sid': self._hashed_id(session_id)},
         )
         item = r['Item']
         if not item:
-            return DynamoDBSession()
-        if r['Item']['exp'] > now():
-            return DynamoDBSession()
+            return DynamoDBSession.new_session()
+        if r['Item']['exp'] < time() + self.timeout:
+            return DynamoDBSession.new_session()
         version = r['Item']['ver']
-        state = serializer.loads(r['Item']['dat'])
-        return DynaomDBSession(session_id, version, state)
+        issued_at = int(r['Item']['iss'])
+        state = self.serializer.loads(r['Item']['dat'])
+        return DynamoDBSession(session_id, state, version, issued_at)
 
     def _response_callback(self, session, request, response):
         if session.dirty:
@@ -152,88 +160,105 @@ class DynamoDBSessionFactory:
                 self._set_cookie(response, session.session_id)
         elif not session.new and session.accessed:
             if(
-                    reissue_timeout is None
-                    or time() - session.issued > reissue_timeout
+                    self.reissue_timeout is None
+                    or time() - session.issued_at > self.reissue_timeout
             ):
                 self._reissue(session)
                 self._set_cookie(session.session_id)
 
-    def _set_cookie(self, response, session_id)
+    def _set_cookie(self, response, session_id):
         response.set_cookie(
-            self._cookie_name,
-            value=self._session_id,
-            max_age=self._cookie_max_age,
-            path=self._cookie_path,
-            domain=self._cookie_domain,
-            secure=self._cookie_secure,
-            httponly=self._cookie_httponly,
-            samesite=self._cookie_samesite,
+            self.cookie_name,
+            value=session_id,
+            max_age=self.cookie_max_age,
+            path=self.cookie_path,
+            domain=self.cookie_domain,
+            secure=self.cookie_secure,
+            httponly=self.cookie_httponly,
+            samesite=self.cookie_samesite,
         )
 
     def _update(self, session):
-        hashed_id = hashalg(session.session_id).digest()
         try:
-            table.put_item(
+            self.table.put_item(
                 Item={
-                    'sid': hashed_id,
-                    'dat': serializer.dumps(session.state),
+                    'sid': self._hashed_id(session.session_id),
+                    'dat': self.serializer.dumps(session.state),
                     'ver': session.version + 1,
                     'iss': int(time()),
-                    'exp': int(time()) + timeout,
+                    'exp': int(time()) + self.timeout,
                 },
                 Expected={
                     'ver': {'Value': session.version},
                 },
             )
-        except table.ConditionCheckFailedException:
+        except self.table.ConditionCheckFailedException:
             raise RaceConditionException(
                 'Session was updated since last read.'
             )
 
     def _create(self, session):
         session_id = secrets.token_urlsafe()
-        hashed_id = hashalg(session_id).digest()
         try:
-            table.put_item(
+            self.table.put_item(
                 Item={
-                    'sid': hashed_id,
-                    'dat': serializer.dumps(session.state),
+                    'sid': self._hashed_id(session_id),
+                    'dat': self.serializer.dumps(session.state),
                     'ver': Decimal('1'),
                     'iss': int(time()),
-                    'exp': int(time()) + timeout,
+                    'exp': int(time()) + self.timeout,
                 },
                 Expected={
                     'sid': {'Exists': False},
                 },
             )
-        except table.ConditionCheckFailedException:
+        except self.table.ConditionCheckFailedException:
             raise RaceConditionException(
                 'Session already exists.'
             )
 
     def _reissue(self, session):
-        hashed_id = hashalg(session_id).digest()
-        table.update_item(
-            Key={'sid': hashed_id},
+        self.table.update_item(
+            Key={'sid': self._hashed_id(session.session_id)},
             AttributeUpdates={
                 'iss': int(time()),
-                'exp': int(time()) + timeout,
+                'exp': int(time()) + self.timeout,
             },
         )
 
 
+def proxy_refresh(func):
+    @functools.wraps(func)
+    def wrapped(self, *args, **kwargs):
+        self.accessed = True
+        return func(self.state, *args, **kwargs)
 
-class DynamoDBSesssion:
-    def __init__(self, session_id, version, state):
+    return wrapped
+
+
+def proxy_persist(func):
+    @functools.wraps(func)
+    def wrapped(self, *args, **kwargs):
+        self.dirty = True
+        self.accessed = True
+        return func(self.state, *args, **kwargs)
+
+    return wrapped
+
+
+@implementer(ISession)
+class DynamoDBSession:
+    def __init__(self, session_id, state, version, issued_at):
         self.session_id = session_id
         self.version = version
+        self.issued_at = issued_at
         self.state = state
         self.dirty = False
         self.accessed = False
 
     @classmethod
-    def fresh(cls):
-        return cls(None, None dict())
+    def new_session(cls):
+        return cls(None, dict(), None, None)
 
     def new(self):
         return self.session_id is None
