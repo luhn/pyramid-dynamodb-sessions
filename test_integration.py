@@ -1,17 +1,15 @@
-from time import time
+import hashlib
 import secrets
 from decimal import Decimal
-import hashlib
-import pytest
-import boto3
-from pyramid.testing import DummyRequest
-from pyramid.response import Response
+from time import time
 
-from pyramid_dynamodb_sessions import (
-    DynamoDBSessionFactory,
-    DynamoDBSession,
-    RaceConditionException,
-)
+import boto3
+import pytest
+from pyramid.response import Response
+from pyramid.testing import DummyRequest
+
+from pyramid_dynamodb_sessions import (DynamoDBSession, DynamoDBSessionFactory,
+                                       RaceConditionException)
 
 
 @pytest.fixture(scope='session')

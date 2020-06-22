@@ -1,10 +1,12 @@
-from time import time
 import hashlib
 from decimal import Decimal
+from time import time
 from unittest.mock import Mock
-from pyramid.testing import DummyRequest
+
 from pyramid.response import Response
-from pyramid_dynamodb_sessions import DynamoDBSessionFactory, DynamoDBSession
+from pyramid.testing import DummyRequest
+
+from pyramid_dynamodb_sessions import DynamoDBSession, DynamoDBSessionFactory
 
 
 def test_factory_init():
