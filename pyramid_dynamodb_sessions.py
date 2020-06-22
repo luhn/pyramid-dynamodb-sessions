@@ -220,20 +220,20 @@ class DynamoDBSessionFactory:
         )
 
 
-def proxy_refresh(func):
+def proxy(func):
+    "Proxy dict functions to state dictionary."
     @functools.wraps(func)
     def wrapped(self, *args, **kwargs):
-        self.accessed = True
         return func(self.state, *args, **kwargs)
 
     return wrapped
 
 
 def proxy_persist(func):
+    "Proxy dict functions and mark session as dirty."
     @functools.wraps(func)
     def wrapped(self, *args, **kwargs):
         self.dirty = True
-        self.accessed = True
         return func(self.state, *args, **kwargs)
 
     return wrapped
@@ -247,7 +247,6 @@ class DynamoDBSession:
         self.issued_at = issued_at
         self.state = state
         self.dirty = False
-        self.accessed = False
 
     @classmethod
     def new_session(cls):
@@ -259,22 +258,20 @@ class DynamoDBSession:
 
     def changed(self):
         self.dirty = True
-        self.accessed = True
 
     def invalidate(self):
         self.dirty = True
-        self.accessed = True
         self.state = dict()
 
     # non-modifying dictionary methods
-    get = proxy_refresh(dict.get)
-    __getitem__ = proxy_refresh(dict.__getitem__)
-    items = proxy_refresh(dict.items)
-    values = proxy_refresh(dict.values)
-    keys = proxy_refresh(dict.keys)
-    __contains__ = proxy_refresh(dict.__contains__)
-    __len__ = proxy_refresh(dict.__len__)
-    __iter__ = proxy_refresh(dict.__iter__)
+    get = proxy(dict.get)
+    __getitem__ = proxy(dict.__getitem__)
+    items = proxy(dict.items)
+    values = proxy(dict.values)
+    keys = proxy(dict.keys)
+    __contains__ = proxy(dict.__contains__)
+    __len__ = proxy(dict.__len__)
+    __iter__ = proxy(dict.__iter__)
 
     # modifying dictionary methods
     clear = proxy_persist(dict.clear)
