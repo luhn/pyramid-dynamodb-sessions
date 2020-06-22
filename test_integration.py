@@ -5,8 +5,10 @@ from time import time
 
 import boto3
 import pytest
+from pyramid.config import Configurator
 from pyramid.response import Response
 from pyramid.testing import DummyRequest
+from webtest import TestApp
 
 from pyramid_dynamodb_sessions import (DynamoDBSession, DynamoDBSessionFactory,
                                        RaceConditionException)
@@ -14,6 +16,7 @@ from pyramid_dynamodb_sessions import (DynamoDBSession, DynamoDBSessionFactory,
 
 @pytest.fixture(scope='session')
 def table(request):
+    # return boto3.resource('dynamodb').Table('sessiontest')
     tablename = f'DynamoDBSession-{ int(time()) }'
     dynamodb = boto3.resource('dynamodb')
     table = dynamodb.create_table(
@@ -149,3 +152,43 @@ def test_reissue_session(table):
     )['Item']
     assert item['iss'] > 1000
     assert item['ver'] == Decimal('2')
+
+
+# Test application
+
+
+@pytest.fixture
+def wsgiapp(table):
+    factory = DynamoDBSessionFactory(table)
+    config = Configurator(
+        settings={},
+        session_factory=factory,
+    )
+
+    config.add_route('index', '/')
+    config.add_view(
+        lambda _, r: dict(r.session),
+        route_name='index',
+        request_method='GET',
+        renderer='json',
+    )
+    config.add_view(
+        lambda _, r: r.session.update(r.json_body),
+        route_name='index',
+        request_method='PUT',
+        renderer='json',
+    )
+    return config.make_wsgi_app()
+
+
+@pytest.fixture
+def testapp(wsgiapp):
+    return TestApp(wsgiapp)
+
+
+def test_app(testapp):
+    assert testapp.get('/').json == {}
+    testapp.put_json('/', {'a': 'b'})
+    assert testapp.get('/').json == {'a': 'b'}
+    testapp.put_json('/', {'c': 'd'})
+    assert testapp.get('/').json == {'a': 'b', 'c': 'd'}
