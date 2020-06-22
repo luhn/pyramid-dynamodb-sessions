@@ -74,7 +74,7 @@ def test_factory_existing_session():
 def test_factory_invalid_id():
     "Session ID doesn't exist."
     table = Mock()
-    table.get_item = Mock(return_value=None)
+    table.get_item = Mock(return_value={})
     factory = DynamoDBSessionFactory(table, cookie_name='cook')
     request = DummyRequest()
     request.cookies['cook'] = 'a'
@@ -162,8 +162,8 @@ def test_factory_save_reissue_session():
     table.update_item.assert_called_once()
     args = table.update_item.call_args[1]
     assert args['Key'] == {'sid': hashlib.sha256(b'a').digest()}
-    assert 0 < time() - args['AttributeUpdates']['iss'] < 1
-    assert 999 < args['AttributeUpdates']['exp'] - time() < 1000
+    assert 0 < time() - args['AttributeUpdates']['iss']['Value'] < 1
+    assert 999 < args['AttributeUpdates']['exp']['Value'] - time() < 1000
 
 
 def test_factory_set_cookie_settings():

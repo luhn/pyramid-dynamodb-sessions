@@ -135,7 +135,7 @@ class DynamoDBSessionFactory:
         r = self.table.get_item(
             Key={'sid': self._hashed_id(session_id)},
         )
-        if not r:
+        if 'Item' not in r:
             return DynamoDBSession.new_session()
         if r['Item']['exp'] < time():
             return DynamoDBSession.new_session()
@@ -189,37 +189,36 @@ class DynamoDBSessionFactory:
                     'ver': {'Value': session.version},
                 },
             )
-        except self.table.ConditionCheckFailedException:
+        except(
+                self.table.meta.client.exceptions
+                .ConditionalCheckFailedException
+        ):
             raise RaceConditionException(
                 'Session was updated since last read.'
             )
 
     def _create(self, session):
         session_id = secrets.token_urlsafe()
-        try:
-            self.table.put_item(
-                Item={
-                    'sid': self._hashed_id(session_id),
-                    'dat': self.serializer.dumps(session.state),
-                    'ver': Decimal('1'),
-                    'iss': int(time()),
-                    'exp': int(time()) + self.timeout,
-                },
-                Expected={
-                    'sid': {'Exists': False},
-                },
-            )
-        except self.table.ConditionCheckFailedException:
-            raise RaceConditionException(
-                'Session already exists.'
-            )
+        self.table.put_item(
+            Item={
+                'sid': self._hashed_id(session_id),
+                'dat': self.serializer.dumps(session.state),
+                'ver': Decimal('1'),
+                'iss': int(time()),
+                'exp': int(time()) + self.timeout,
+            },
+            Expected={
+                'sid': {'Exists': False},
+            },
+        )
+        return session_id
 
     def _reissue(self, session):
         self.table.update_item(
             Key={'sid': self._hashed_id(session.session_id)},
             AttributeUpdates={
-                'iss': int(time()),
-                'exp': int(time()) + self.timeout,
+                'iss': {'Value': int(time())},
+                'exp': {'Value': int(time()) + self.timeout},
             },
         )
 
