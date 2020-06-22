@@ -3,10 +3,10 @@ import hashlib
 import secrets
 from decimal import Decimal
 from time import time
+import json
 
 import boto3
 from pyramid.interfaces import ISession, ISessionFactory
-from pyramid.session import JSONSerializer
 from zope.interface import implementer
 
 
@@ -20,16 +20,15 @@ class DynamoDBSessionFactory:
             self,
             table,
             cookie_name='session_id',
-            serializer=None,
+            serializer=json,
             max_age=None,
             path='/',
             domain=None,
             secure=False,
-            httponly=False,
-            samesite='Lax',
+            httponly=True,
+            samesite='Strict',
             timeout=1200,
             reissue_time=120,
-            hash_alg=hashlib.sha256,
             set_on_exception=True,
     ):
         """
@@ -106,11 +105,8 @@ class DynamoDBSessionFactory:
             table = dynamodb.Table(table)
         self.table = table
 
-        if serializer is None:
-            serializer = JSONSerializer()
-        self.serializer = serializer
-
         self.cookie_name = cookie_name
+        self.serializer = serializer
         self.max_age = int(max_age) if max_age is not None else None
         self.path = path
         self.domain = domain
@@ -121,29 +117,27 @@ class DynamoDBSessionFactory:
         self.reissue_time = (
             int(reissue_time) if reissue_time is not None else None
         )
-        self.hash_alg = hash_alg
         self.set_on_exception = set_on_exception
 
     def __call__(self, request):
         session = self._load(request)
         callback = functools.partial(self._response_callback, session)
-        request.set_response_callback(callback)
+        request.add_response_callback(callback)
         return session
 
     def _hashed_id(self, session_id):
-        return self.hash_alg(session_id).digest()
+        return hashlib.sha256(session_id.encode('utf8')).digest()
 
     def _load(self, request):
-        session_id = request.cookies.get(self._cookie_name)
+        session_id = request.cookies.get(self.cookie_name)
         if not session_id:
             return DynamoDBSession.new_session()
         r = self.table.get_item(
             Key={'sid': self._hashed_id(session_id)},
         )
-        item = r['Item']
-        if not item:
+        if not r:
             return DynamoDBSession.new_session()
-        if r['Item']['exp'] < time() + self.timeout:
+        if r['Item']['exp'] < time():
             return DynamoDBSession.new_session()
         version = r['Item']['ver']
         issued_at = int(r['Item']['iss'])
@@ -154,28 +148,27 @@ class DynamoDBSessionFactory:
         if session.dirty:
             if session.new:
                 session_id = self._create(session)
-                self._set_cookie(response, session_id)
             else:
                 self._update(session)
-                self._set_cookie(response, session.session_id)
-        elif not session.new and session.accessed:
-            if(
-                    self.reissue_timeout is None
-                    or time() - session.issued_at > self.reissue_timeout
-            ):
-                self._reissue(session)
-                self._set_cookie(session.session_id)
+                session_id = session.session_id
+            self._set_cookie(response, session_id)
+        elif not session.new and (
+            self.reissue_time is None
+            or time() - session.issued_at > self.reissue_time
+        ):
+            self._reissue(session)
+            self._set_cookie(response, session.session_id)
 
     def _set_cookie(self, response, session_id):
         response.set_cookie(
             self.cookie_name,
             value=session_id,
-            max_age=self.cookie_max_age,
-            path=self.cookie_path,
-            domain=self.cookie_domain,
-            secure=self.cookie_secure,
-            httponly=self.cookie_httponly,
-            samesite=self.cookie_samesite,
+            max_age=self.max_age,
+            path=self.path,
+            domain=self.domain,
+            secure=self.secure,
+            httponly=self.httponly,
+            samesite=self.samesite,
         )
 
     def _update(self, session):
@@ -260,6 +253,7 @@ class DynamoDBSession:
     def new_session(cls):
         return cls(None, dict(), None, None)
 
+    @property
     def new(self):
         return self.session_id is None
 
