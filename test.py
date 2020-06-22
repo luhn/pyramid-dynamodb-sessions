@@ -104,6 +104,7 @@ def test_factory_save_new_session():
     factory = DynamoDBSessionFactory(
         table,
         cookie_name='cook',
+        secure=True,
         timeout=1000,
     )
     request = object()
@@ -127,6 +128,7 @@ def test_factory_save_update_session():
     factory = DynamoDBSessionFactory(
         table,
         cookie_name='cook',
+        secure=True,
         timeout=1000,
     )
     request = object()
@@ -149,6 +151,7 @@ def test_factory_save_reissue_session():
     session = DynamoDBSession('a', dict(), Decimal('2'), issued_at)
     factory = DynamoDBSessionFactory(
         table,
+        secure=True,
         timeout=1000,
         reissue_time=10,
     )
@@ -173,8 +176,9 @@ def test_factory_set_cookie_settings():
         httponly=True,
         samesite='Lax',
     )
+    request = DummyRequest()
     response = Response()
-    factory._set_cookie(response, 'sid')
+    factory._set_cookie(request, response, 'sid')
     cookieval = response.headerlist[-1][1]
     params = {x.strip() for x in cookieval.split(';')}
     assert params == {
@@ -185,6 +189,20 @@ def test_factory_set_cookie_settings():
         'HttpOnly',
         'SameSite=Lax',
     }
+
+
+def test_factory_set_cookie_secure():
+    factory = DynamoDBSessionFactory(
+        None,
+        secure=None,
+    )
+    request = DummyRequest()
+    request.scheme = 'https'
+    response = Response()
+    factory._set_cookie(request, response, 'sid')
+    cookieval = response.headerlist[-1][1]
+    params = {x.strip() for x in cookieval.split(';')}
+    assert 'secure' in params
 
 
 def test_factory_response_callback():

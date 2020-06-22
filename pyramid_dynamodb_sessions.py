@@ -24,7 +24,7 @@ class DynamoDBSessionFactory:
             max_age=None,
             path='/',
             domain=None,
-            secure=False,
+            secure=None,
             httponly=True,
             samesite='Strict',
             timeout=1200,
@@ -151,22 +151,26 @@ class DynamoDBSessionFactory:
             else:
                 self._update(session)
                 session_id = session.session_id
-            self._set_cookie(response, session_id)
+            self._set_cookie(request, response, session_id)
         elif not session.new and (
             self.reissue_time is None
             or time() - session.issued_at > self.reissue_time
         ):
             self._reissue(session)
-            self._set_cookie(response, session.session_id)
+            self._set_cookie(request, response, session.session_id)
 
-    def _set_cookie(self, response, session_id):
+    def _set_cookie(self, request, response, session_id):
+        if self.secure is None:
+            secure = request.scheme == 'https'
+        else:
+            secure = self.secure
         response.set_cookie(
             self.cookie_name,
             value=session_id,
             max_age=self.max_age,
             path=self.path,
             domain=self.domain,
-            secure=self.secure,
+            secure=secure,
             httponly=self.httponly,
             samesite=self.samesite,
         )
