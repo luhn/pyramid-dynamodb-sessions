@@ -11,11 +11,9 @@ from pyramid_dynamodb_sessions import DynamoDBSession, DynamoDBSessionFactory
 
 def test_factory_init():
     table = object()
-    serializer = object()
     factory = DynamoDBSessionFactory(
         table,
         cookie_name='cook',
-        serializer=serializer,
         max_age=123,
         path='/foo',
         domain='example.com',
@@ -28,7 +26,6 @@ def test_factory_init():
     )
     assert factory.table is table
     assert factory.cookie_name == 'cook'
-    assert factory.serializer is serializer
     assert factory.max_age == 123
     assert factory.path == '/foo'
     assert factory.domain == 'example.com'

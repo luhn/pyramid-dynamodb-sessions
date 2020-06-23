@@ -20,7 +20,6 @@ class DynamoDBSessionFactory:
             self,
             table,
             cookie_name='session_id',
-            serializer=json,
             max_age=None,
             path='/',
             domain=None,
@@ -106,7 +105,6 @@ class DynamoDBSessionFactory:
         self.table = table
 
         self.cookie_name = cookie_name
-        self.serializer = serializer
         self.max_age = int(max_age) if max_age is not None else None
         self.path = path
         self.domain = domain
@@ -153,7 +151,7 @@ class DynamoDBSessionFactory:
             return DynamoDBSession.new_session()
         version = r['Item']['ver']
         issued_at = int(r['Item']['iss'])
-        state = self.serializer.loads(r['Item']['dat'])
+        state = json.loads(r['Item']['dat'])
         return DynamoDBSession(session_id, state, version, issued_at)
 
     def _response_callback(self, session, request, response):
@@ -198,7 +196,7 @@ class DynamoDBSessionFactory:
             self.table.put_item(
                 Item={
                     'sid': self._hashed_id(session.session_id),
-                    'dat': self.serializer.dumps(session.state),
+                    'dat': json.dumps(session.state),
                     'ver': session.version,
                     'iss': session.issued_at,
                     'exp': session.issued_at + self.timeout,
@@ -222,7 +220,7 @@ class DynamoDBSessionFactory:
         self.table.put_item(
             Item={
                 'sid': self._hashed_id(session.session_id),
-                'dat': self.serializer.dumps(session.state),
+                'dat': json.dumps(session.state),
                 'ver': session.version,
                 'iss': session.issued_at,
                 'exp': session.issued_at + self.timeout,
