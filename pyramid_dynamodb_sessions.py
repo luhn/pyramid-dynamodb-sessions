@@ -129,12 +129,24 @@ class DynamoDBSessionFactory:
         return hashlib.sha256(session_id.encode('utf8')).digest()
 
     def _load(self, request):
-        session_id = request.cookies.get(self.cookie_name)
-        if not session_id:
+        cookie_val = request.cookies.get(self.cookie_name)
+        if not cookie_val:
             return DynamoDBSession.new_session()
+        split = cookie_val.split('/')
+        if len(split) < 2:
+            return DynamoDBSession.new_session()
+        session_id = split[0]
+        version = Decimal(split[1])
         r = self.table.get_item(
             Key={'sid': self._hashed_id(session_id)},
+            ConsistentRead=False,
         )
+        if 'Item' not in r or r['Item']['ver'] < version:
+            # If read fails, try again as a consistent read.
+            r = self.table.get_item(
+                Key={'sid': self._hashed_id(session_id)},
+                ConsistentRead=True,
+            )
         if 'Item' not in r:
             return DynamoDBSession.new_session()
         if r['Item']['exp'] < time():
@@ -147,26 +159,29 @@ class DynamoDBSessionFactory:
     def _response_callback(self, session, request, response):
         if session.dirty:
             if session.new:
-                session_id = self._create(session)
+                self._create(session)
             else:
                 self._update(session)
-                session_id = session.session_id
-            self._set_cookie(request, response, session_id)
+            self._set_cookie(request, response, session)
         elif not session.new and (
             self.reissue_time is None
             or time() - session.issued_at > self.reissue_time
         ):
             self._reissue(session)
-            self._set_cookie(request, response, session.session_id)
+            self._set_cookie(request, response, session)
 
-    def _set_cookie(self, request, response, session_id):
+    def _set_cookie(self, request, response, session):
+        val = '/'.join([
+            session.session_id,
+            str(session.version),
+        ])
         if self.secure is None:
             secure = request.scheme == 'https'
         else:
             secure = self.secure
         response.set_cookie(
             self.cookie_name,
-            value=session_id,
+            value=val,
             max_age=self.max_age,
             path=self.path,
             domain=self.domain,
@@ -176,17 +191,20 @@ class DynamoDBSessionFactory:
         )
 
     def _update(self, session):
+        old_version = session.version
+        session.version += 1
+        session.issued_at = Decimal(int(time()))
         try:
             self.table.put_item(
                 Item={
                     'sid': self._hashed_id(session.session_id),
                     'dat': self.serializer.dumps(session.state),
-                    'ver': session.version + 1,
-                    'iss': int(time()),
-                    'exp': int(time()) + self.timeout,
+                    'ver': session.version,
+                    'iss': session.issued_at,
+                    'exp': session.issued_at + self.timeout,
                 },
                 Expected={
-                    'ver': {'Value': session.version},
+                    'ver': {'Value': old_version},
                 },
             )
         except(
@@ -198,20 +216,21 @@ class DynamoDBSessionFactory:
             )
 
     def _create(self, session):
-        session_id = secrets.token_urlsafe()
+        session.session_id = secrets.token_urlsafe()
+        session.version = Decimal('1')
+        session.issued_at = Decimal(int(time()))
         self.table.put_item(
             Item={
-                'sid': self._hashed_id(session_id),
+                'sid': self._hashed_id(session.session_id),
                 'dat': self.serializer.dumps(session.state),
-                'ver': Decimal('1'),
-                'iss': int(time()),
-                'exp': int(time()) + self.timeout,
+                'ver': session.version,
+                'iss': session.issued_at,
+                'exp': session.issued_at + self.timeout,
             },
             Expected={
                 'sid': {'Exists': False},
             },
         )
-        return session_id
 
     def _reissue(self, session):
         self.table.update_item(

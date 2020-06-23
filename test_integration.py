@@ -48,7 +48,7 @@ def table(request):
 def test_load_invalid_session_id(table):
     factory = DynamoDBSessionFactory(table, cookie_name='cook')
     request = DummyRequest()
-    request.cookies['cook'] = secrets.token_urlsafe()
+    request.cookies['cook'] = secrets.token_urlsafe() + '/1'
     session = factory(request)
     assert session.new
 
@@ -67,7 +67,7 @@ def test_load_session(table):
     )
     factory = DynamoDBSessionFactory(table, cookie_name='cook')
     request = DummyRequest()
-    request.cookies['cook'] = session_id
+    request.cookies['cook'] = session_id + '/2'
     session = factory(request)
     assert session.state == {'a': 'b'}
     assert session.version == Decimal('2')
@@ -81,7 +81,9 @@ def test_save_new_session(table):
     response = Response()
     factory._response_callback(session, request, response)
     value = response.headerlist[-1][1].split(';')[0]
-    session_id = value.partition('=')[2]
+    cookie_val = value.partition('=')[2]
+    session_id, version = cookie_val.split('/')
+    assert version == '1'
     hashed_id = hashlib.sha256(session_id.encode('utf8')).digest()
     item = table.get_item(
         Key={'sid': hashed_id},
@@ -129,6 +131,7 @@ def test_save_race_condition(table):
     response = Response()
     factory._response_callback(session, request, response)
     with pytest.raises(RaceConditionException):
+        session.version = Decimal('2')
         factory._response_callback(session, request, response)
 
 

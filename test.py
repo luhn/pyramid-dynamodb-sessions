@@ -61,11 +61,12 @@ def test_factory_existing_session():
     })
     factory = DynamoDBSessionFactory(table, cookie_name='cook')
     request = DummyRequest()
-    request.cookies['cook'] = 'a'
+    request.cookies['cook'] = 'a/1'
     hashed_id = hashlib.sha256(b'a').digest()
     session = factory(request)
     table.get_item.assert_called_once_with(
         Key={'sid': hashed_id},
+        ConsistentRead=False,
     )
     assert session.session_id == 'a'
     assert session.version == Decimal('1')
@@ -79,7 +80,7 @@ def test_factory_invalid_id():
     table.get_item = Mock(return_value={})
     factory = DynamoDBSessionFactory(table, cookie_name='cook')
     request = DummyRequest()
-    request.cookies['cook'] = 'a'
+    request.cookies['cook'] = 'a/1'
     session = factory(request)
     assert session.new
 
@@ -118,8 +119,8 @@ def test_factory_save_new_session():
     assert args['Item']['sid']
     assert args['Item']['dat'] == '{"a": "b"}'
     assert args['Item']['ver'] == Decimal('1')
-    assert 0 < time() - args['Item']['iss'] < 1
-    assert 999 < args['Item']['exp'] - time() < 1000
+    assert time() - 1 < args['Item']['iss'] < time()
+    assert time() + 999 < args['Item']['exp'] < time() + 1000
     assert args['Expected'] == {'sid': {'Exists': False}}
 
 
@@ -142,8 +143,8 @@ def test_factory_save_update_session():
     assert args['Item']['sid'] == hashlib.sha256(b'a').digest()
     assert args['Item']['dat'] == '{"a": "b"}'
     assert args['Item']['ver'] == Decimal('3')
-    assert 0 < time() - args['Item']['iss'] < 1
-    assert 999 < args['Item']['exp'] - time() < 1000
+    assert time() - 1 < args['Item']['iss'] < time()
+    assert time() + 999 < args['Item']['exp'] < time() + 1000
     assert args['Expected'] == {'ver': {'Value': Decimal('2')}}
 
 
@@ -164,8 +165,11 @@ def test_factory_save_reissue_session():
     table.update_item.assert_called_once()
     args = table.update_item.call_args[1]
     assert args['Key'] == {'sid': hashlib.sha256(b'a').digest()}
-    assert 0 < time() - args['AttributeUpdates']['iss']['Value'] < 1
-    assert 999 < args['AttributeUpdates']['exp']['Value'] - time() < 1000
+    assert time() - 1 < args['AttributeUpdates']['iss']['Value'] < time()
+    assert (
+        time() + 999 < args['AttributeUpdates']['exp']['Value']
+        < time() + 1000
+    )
 
 
 def test_factory_set_cookie_settings():
@@ -180,11 +184,12 @@ def test_factory_set_cookie_settings():
     )
     request = DummyRequest()
     response = Response()
-    factory._set_cookie(request, response, 'sid')
+    session = DynamoDBSession('sid', dict(), Decimal('2'), 123)
+    factory._set_cookie(request, response, session)
     cookieval = response.headerlist[-1][1]
     params = {x.strip() for x in cookieval.split(';')}
     assert params == {
-        'abc=sid',
+        'abc=sid/2',
         'Domain=localhost',
         'Path=/foo',
         'secure',
@@ -201,7 +206,8 @@ def test_factory_set_cookie_secure():
     request = DummyRequest()
     request.scheme = 'https'
     response = Response()
-    factory._set_cookie(request, response, 'sid')
+    session = DynamoDBSession('sid', dict(), Decimal('2'), 123)
+    factory._set_cookie(request, response, session)
     cookieval = response.headerlist[-1][1]
     params = {x.strip() for x in cookieval.split(';')}
     assert 'secure' in params
