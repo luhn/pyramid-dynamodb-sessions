@@ -39,6 +39,7 @@ aws dynamodb update-time-to-live \
 
 To enable pyramid-dynamodb-sessions in your application, first make sure your application has the following permissions for your newly created table:
 
+- `dynamodb:GetItem`
 - `dynamodb:PutItem`
 - `dynamodb:UpdateItem`
 - `dynamodb:DeleteItem`
