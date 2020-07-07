@@ -22,7 +22,6 @@ def test_factory_init():
         samesite='Lax',
         timeout=123,
         reissue_time=12,
-        set_on_exception=False,
     )
     assert factory.table is table
     assert factory.cookie_name == 'cook'
@@ -34,7 +33,6 @@ def test_factory_init():
     assert factory.samesite == 'Lax'
     assert factory.timeout == 123
     assert factory.reissue_time == 12
-    assert not factory.set_on_exception
 
 
 def test_factory_new_session():

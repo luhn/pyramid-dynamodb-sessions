@@ -85,7 +85,6 @@ class DynamoDBSessionFactory:
         self.reissue_time = (
             int(reissue_time) if reissue_time is not None else None
         )
-        self.set_on_exception = set_on_exception
 
     def __call__(self, request):
         session = self._load(request)
