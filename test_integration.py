@@ -168,6 +168,7 @@ def wsgiapp(table):
         session_factory=factory,
     )
 
+    # Basic endpoints
     config.add_route('index', '/')
     config.add_view(
         lambda _, r: dict(r.session),
@@ -181,6 +182,23 @@ def wsgiapp(table):
         request_method='PUT',
         renderer='json',
     )
+
+    # Flash endpoints
+    config.add_route('flash', '/flash')
+
+    config.add_view(
+        lambda _, r: r.session.pop_flash(),
+        route_name='flash',
+        request_method='GET',
+        renderer='json',
+    )
+    config.add_view(
+        lambda _, r: r.session.flash(r.json_body),
+        route_name='flash',
+        request_method='POST',
+        renderer='json',
+    )
+
     return config.make_wsgi_app()
 
 
@@ -195,3 +213,10 @@ def test_app(testapp):
     assert testapp.get('/').json == {'a': 'b'}
     testapp.put_json('/', {'c': 'd'})
     assert testapp.get('/').json == {'a': 'b', 'c': 'd'}
+
+
+def test_flash(testapp):
+    assert testapp.get('/flash').json == []
+    testapp.post_json('/flash', 'a')
+    assert testapp.get('/flash').json == ['a']
+    assert testapp.get('/flash').json == []
