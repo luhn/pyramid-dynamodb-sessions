@@ -1,6 +1,6 @@
 from setuptools import setup
 
-VERSION = '0.1.0'
+VERSION = '0.1.1'
 
 REQUIRES = [
     'boto3',
@@ -19,7 +19,7 @@ setup(
     url='https://github.com/luhn/limited/',
     author='Theron Luhn',
     author_email='theron@luhn.com',
-    version='0.1.0',
+    version=VERSION,
     classifiers=[
         'Programming Language :: Python :: 3',
         'License :: OSI Approved :: MIT License',
