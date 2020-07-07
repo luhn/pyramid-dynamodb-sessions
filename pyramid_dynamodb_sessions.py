@@ -28,75 +28,45 @@ class DynamoDBSessionFactory:
             samesite='Strict',
             timeout=1200,
             reissue_time=120,
-            set_on_exception=True,
     ):
         """
-    Configure a :term:`session factory` which will provide DynamoDB-backed
-    sessions.  The return value of this function is a :term:`session factory`,
-    which may be provided as the ``session_factory`` argument of a
-    :class:`pyramid.config.Configurator` constructor, or used as the
-    ``session_factory`` argument of the
-    :meth:`pyramid.config.Configurator.set_session_factory` method.
+    A Pyramid session factory which will provide DynamoDB-backed
+    sessions.
 
-    Parameters:
+    The DynamoDB table must have a hash key ``sid`` of binary (B) type and a
+    time-to-live on the ``exp`` attribute.
 
-    ``serializer``
-      An object with two methods: ``loads`` and ``dumps``.  The ``loads``
-      method should accept bytes and return a Python object.  The ``dumps``
-      method should accept a Python object and return bytes.  A ``ValueError``
-      should be raised for malformed inputs.
-
-    ``cookie_name``
-      The name of the cookie used for sessioning. Default: ``'session'``.
-
-    ``max_age``
-      The maximum age of the cookie used for sessioning (in seconds).
-      Default: ``None`` (browser scope).
-
-    ``path``
-      The path used for the session cookie. Default: ``'/'``.
-
-    ``domain``
-      The domain used for the session cookie.  Default: ``None`` (no domain).
-
-    ``secure``
-      The 'secure' flag of the session cookie. Default: ``False``.
-
-    ``httponly``
-      Hide the cookie from Javascript by setting the 'HttpOnly' flag of the
-      session cookie. Default: ``False``.
-
-    ``samesite``
-      The 'samesite' option of the session cookie. Set the value to ``None``
-      to turn off the samesite option.  Default: ``'Lax'``.
-
-    ``timeout``
-      A number of seconds of inactivity before a session times out. If
-      ``None`` then the cookie never expires. This lifetime only applies
-      to the *value* within the cookie. Meaning that if the cookie expires
-      due to a lower ``max_age``, then this setting has no effect.
-      Default: ``1200``.
-
-    ``reissue_time``
-      The number of seconds that must pass before the cookie is automatically
-      reissued as the result of a request which accesses the session. The
-      duration is measured as the number of seconds since the last session
-      cookie was issued and 'now'.  If this value is ``0``, a new cookie
-      will be reissued on every request accessing the session. If ``None``
-      then the cookie's lifetime will never be extended.
-
-      A good rule of thumb: if you want auto-expired cookies based on
-      inactivity: set the ``timeout`` value to 1200 (20 mins) and set the
-      ``reissue_time`` value to perhaps a tenth of the ``timeout`` value
-      (120 or 2 mins).  It's nonsensical to set the ``timeout`` value lower
-      than the ``reissue_time`` value, as the ticket will never be reissued.
-      However, such a configuration is not explicitly prevented.
-
-      Default: ``0``.
-
-    ``set_on_exception``
-      If ``True``, set a session cookie even if an exception occurs
-      while rendering a view. Default: ``True``.
+    :param table:  The DynamoDB table to use.  Can be a string or a boto3 Table
+        object.
+    :type table:  ``str`` or ``Table``
+    :param cookie_name:  The name of the cookie used to store the session ID.
+        Defaults to ``session_id``.
+    :type cookie_name: str
+    :param max_age:  The expiration time for the cookie in seconds.  Defaults
+        to ``None`` (session-only cookie).
+    :type max_age:  int
+    :param path:  The path for the cookie.  Defaults to ``/``.
+    :type path:  str
+    :param domain:  The domain for the cookie.  Defaults to no domain.
+    :type domain:  str
+    :param secure:  If true, sets the ``secure`` flag for the cookie.  Defaults
+        to ``None``, which will set the flag if the request is made via HTTPS.
+    :type secure:  bool
+    :param httponly:  If true, hide the cookie from Javascript by setting the
+        ``HttpOnly`` flag.  Defaults to true.
+    :type httponly:  bool
+    :param samesite:  The SameSite property for the cookie, or ``None`` to
+        disable the SameSite option.  Defaults to ``Strict``.
+    :type samesite:  str
+    :param timeout:  The number of seconds of inactivity before the session
+        times out.  Defaults to ``1200``.  (20 minutes)
+    :type timeout:  int
+    :param reissue_time:  The number of seconds before the session is
+        "reissued," meaning that the activity timeout is reset.  Reissuing
+        performs a write to DynamoDB, so it is recommended to set this to a
+        reasonably high value, such as 1/10 of the timeout.  Defaults to
+        ``120``.  (2 minutes)
+    :type reissue_time:  int
 
     """
         if isinstance(table, str):

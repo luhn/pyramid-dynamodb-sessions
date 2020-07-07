@@ -13,7 +13,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name='pyramid-dynamodb-sessions',
-    description='Pyramid sessions stored in DynamoDB',
+    description='DynamoDB-backed sessions for Pyramid applications.',
     long_description=long_description,
     long_description_content_type="text/markdown",
     url='https://github.com/luhn/limited/',
