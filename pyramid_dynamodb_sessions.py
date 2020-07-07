@@ -278,7 +278,13 @@ class DynamoDBSession:
             storage.append(msg)
 
     def pop_flash(self, queue=''):
-        return self.pop('_f_' + queue, [])
+        # We check if the queue is in the session first, because we don't want
+        # to needlessly mutate the session.
+        name = '_f_' + queue
+        if name in self:
+            return self.pop(name)
+        else:
+            return []
 
     def peek_flash(self, queue=''):
         return self.get('_f_' + queue, [])
