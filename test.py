@@ -220,3 +220,152 @@ def test_factory_response_callback():
     factory._response_callback.assert_called_once_with(
         session, request, response,
     )
+
+
+# Test session methods
+
+
+def _make_session(state=None):
+    if state is None:
+        state = dict()
+    return DynamoDBSession('abc', state, Decimal('1'), 123)
+
+
+def test_session_new():
+    session = DynamoDBSession.new_session()
+    assert session.new
+    session = DynamoDBSession('abc', {}, Decimal('1'), 123)
+    assert not session.new
+
+
+def test_session_changed():
+    session = _make_session()
+    session.changed()
+    assert session.dirty
+
+
+def test_session_invalidate():
+    session = _make_session({'foo': 'bar'})
+    session.invalidate()
+    assert session.dirty
+    assert 'foo' not in session
+
+
+def test_session_access_methods():
+    session = _make_session({'foo': 'bar'})
+    assert session.get('foo') == 'bar'
+    assert session.get('foobar', 'fizz') == 'fizz'
+    assert session['foo'] == 'bar'  # __getitem__
+    assert list(session.items()) == [('foo', 'bar')]
+    assert list(session.values()) == ['bar']
+    assert list(session.keys()) == ['foo']
+    assert 'foo' in session  # __contains__
+    assert len(session) == 1  # __len__
+    assert [x for x in session] == ['foo']  # __iter__
+    assert not session.dirty
+
+
+def test_session_clear():
+    session = _make_session({'foo': 'bar'})
+    session.clear()
+    assert session.dirty
+    assert len(session) == 0
+
+
+def test_session_update():
+    session = _make_session()
+    session.update({'fizz': 'buzz'})
+    assert session.dirty
+    assert session['fizz'] == 'buzz'
+
+
+def test_session_setdefault():
+    session = _make_session()
+    assert session.setdefault('foo', 'bar') == 'bar'
+    assert session.dirty
+    assert session['foo'] == 'bar'
+
+
+def test_session_pop():
+    session = _make_session({'foo': 'bar'})
+    assert session.pop('foo') == 'bar'
+    assert session.dirty
+    assert 'foo' not in session
+
+
+def test_session_popitem():
+    session = _make_session({'foo': 'bar'})
+    assert session.popitem() == ('foo', 'bar')
+    assert session.dirty
+    assert 'foo' not in session
+
+
+def test_session_setitem():
+    session = _make_session()
+    session['foo'] = 'bar'
+    assert session.dirty
+    assert session['foo'] == 'bar'
+
+
+def test_session_delitem():
+    session = _make_session({'foo': 'bar'})
+    del session['foo']
+    assert session.dirty
+    assert 'foo' not in session
+
+
+def test_session_flash():
+    session = _make_session()
+    session.flash('foo')
+    assert session['_f_'] == ['foo']
+    session.flash('bar')
+    assert session['_f_'] == ['foo', 'bar']
+    session.flash('fizz', 'buzz')
+    assert session['_f_buzz'] == ['fizz']
+
+
+def test_session_pop_flash():
+    session = _make_session({
+        '_f_': ['foo', 'bar'],
+        '_f_buzz': ['fizz'],
+    })
+    assert session.pop_flash() == ['foo', 'bar']
+    assert '_f_' not in session
+    assert session.dirty
+    assert session.pop_flash('buzz') == ['fizz']
+    assert '_f_buzz' not in session
+
+
+def test_session_pop_flash_empty():
+    "Make sure popping empty flash does not dirty the session."
+    session = _make_session()
+    assert session.pop_flash() == []
+    assert not session.dirty
+
+
+def test_session_peek_flash():
+    session = _make_session({
+        '_f_': ['foo', 'bar'],
+        '_f_buzz': ['fizz'],
+    })
+    assert session.peek_flash() == ['foo', 'bar']
+    assert session.peek_flash() == ['foo', 'bar']
+    assert session.peek_flash('buzz') == ['fizz']
+    assert not session.dirty
+
+
+def test_session_new_csrf_token():
+    session = _make_session()
+    token = session.new_csrf_token()
+    assert session['_csrft_'] == token
+
+
+def test_session_get_csrf_token():
+    session = _make_session({'_csrft_': 'foobar'})
+    assert session.get_csrf_token() == 'foobar'
+
+
+def test_session_get_csrf_token_new():
+    session = _make_session()
+    token = session.get_csrf_token()
+    assert session['_csrft_'] == token
