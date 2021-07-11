@@ -16,7 +16,7 @@ setup(
     description='DynamoDB-backed sessions for Pyramid applications.',
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url='https://github.com/luhn/limited/',
+    url='https://github.com/luhn/pyramid-dynamodb-sessions/',
     author='Theron Luhn',
     author_email='theron@luhn.com',
     version=VERSION,
