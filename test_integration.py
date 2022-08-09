@@ -15,11 +15,25 @@ from pyramid_dynamodb_sessions import (DynamoDBSession, DynamoDBSessionFactory,
 
 
 @pytest.fixture(scope='session')
-def table(request):
+def ddb_resource(request):
+    endpoint = request.config.getoption("--dynamodb")
+    if endpoint:
+        session = boto3.Session(
+            region_name='us-west-2',
+            aws_access_key_id='foo',
+            aws_secret_access_key='bar',
+        )
+        return session.resource('dynamodb', endpoint_url=endpoint)
+    else:
+        return boto3.resource('dynamodb')
+
+
+@pytest.fixture(scope='session')
+def table(request, ddb_resource):
     # return boto3.resource('dynamodb').Table('sessiontest')
-    tablename = f'DynamoDBSession-{ int(time()) }'
-    dynamodb = boto3.resource('dynamodb')
-    table = dynamodb.create_table(
+    rand = secrets.token_hex(8)
+    tablename = f'DynamoDBSession-{ rand }'
+    table = ddb_resource.create_table(
         TableName=tablename,
         KeySchema=[
             {
@@ -35,8 +49,7 @@ def table(request):
         ],
         BillingMode='PAY_PER_REQUEST',
     )
-    boto3.client('dynamodb').get_waiter('table_exists')\
-        .wait(TableName=tablename)
+    table.wait_until_exists()
 
     def delete_table():
         table.delete()
