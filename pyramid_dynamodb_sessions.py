@@ -174,7 +174,7 @@ class DynamoDBSessionFactory:
                     'ver': {'Value': old_version},
                 },
             )
-        except(
+        except (
                 self.table.meta.client.exceptions
                 .ConditionalCheckFailedException
         ):
