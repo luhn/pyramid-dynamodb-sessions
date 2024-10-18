@@ -11,8 +11,9 @@ jobs:
           - "3.8"
           - "3.9"
           - "3.10"
-          - "pypy3.8"
-          - "pypy3.9"
+          - "3.11"
+          - "3.12"
+          - "pypy3.10"
 
     name: "Python: ${{ matrix.py }}"
     runs-on: ubuntu-latest
@@ -30,10 +31,10 @@ jobs:
   integration:
     strategy:
       matrix:
-        # Least
+        # Lowest supported version
         py:
           - "3.8"
-          - "pypy3.8"
+          - "pypy3.10"
         pyramid_version:
           - "<2"
           - ">=2"
