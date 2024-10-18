@@ -67,8 +67,10 @@ jobs:
       - name: Setup python
         uses: actions/setup-python@v5
         with:
-          python-version: 3.8
+          python-version: 3.12
       - name: Install
         run: pip install .[linting]
-      - name: Flake8
-        run: flake8 pyramid_dynamodb_sessions.py test.py test_integration.py
+      - name: Lint
+        run:  ruff check pyramid_dynamodb_sessions.py conftest.py test.py test_integration.py
+      - name: Format
+        run: ruff format --check pyramid_dynamodb_sessions.py conftest.py test.py test_integration.py

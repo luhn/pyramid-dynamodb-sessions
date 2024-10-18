@@ -1,4 +1,3 @@
-
 def pytest_addoption(parser):
     parser.addoption(
         "--dynamodb",
@@ -6,4 +5,3 @@ def pytest_addoption(parser):
         default=None,
         help="The endpoint URL for DynamoDB.",
     )
-

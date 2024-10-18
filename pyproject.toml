@@ -1,3 +1,15 @@
 
 [tool.pytest.ini_options]
 testpaths = ["test.py"]
+
+[tool.ruff]
+line-length = 79
+target-version = "py38"
+
+[tool.ruff.lint]
+select = [
+	"E",  # flake8
+	"F",  # pyflakes
+	"T20",  # flake8-print
+	"I",   # isort
+]
